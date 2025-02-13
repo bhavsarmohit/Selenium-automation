@@ -75,3 +75,94 @@ def ensure_chromedriver():
 
 # Run the check
 ensure_chromedriver()
+
+
+
+
+#≈=========
+
+import os
+import re
+import subprocess
+import requests
+import zipfile
+
+def get_chrome_version():
+    """ Get the installed Chrome browser version. """
+    try:
+        output = subprocess.check_output(['google-chrome', '--version']).decode().strip()
+    except Exception:
+        try:
+            output = subprocess.check_output(['chromium-browser', '--version']).decode().strip()
+        except Exception:
+            print("Chrome browser not found.")
+            return None
+
+    version = re.search(r"(\d+\.\d+\.\d+\.\d+)", output)
+    return version.group(1) if version else None
+
+def get_chromedriver_version():
+    """ Get the installed ChromeDriver version. """
+    try:
+        output = subprocess.check_output(['chromedriver', '--version']).decode().strip()
+        version = re.search(r"(\d+\.\d+\.\d+\.\d+)", output)
+        return version.group(1) if version else None
+    except Exception:
+        return None
+
+def get_latest_chromedriver_url(chrome_version):
+    """ Fetch the latest compatible ChromeDriver download URL from Google's API """
+    url = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+    response = requests.get(url)
+    
+    if response.status_code == 200:
+        data = response.json()
+        for version_data in data["versions"]:
+            if version_data["version"].startswith(chrome_version.rsplit('.', 1)[0]):  # Match major.minor.patch
+                return version_data["downloads"]["chromedriver"][0]["url"]
+    
+    print(f"Could not find a matching ChromeDriver for Chrome {chrome_version}.")
+    return None
+
+def download_chromedriver(download_url):
+    """ Download and extract ChromeDriver. """
+    if not download_url:
+        print("No valid download URL found.")
+        return
+
+    zip_path = "chromedriver.zip"
+    response = requests.get(download_url, stream=True)
+    
+    if response.status_code == 200:
+        with open(zip_path, "wb") as f:
+            f.write(response.content)
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(".")
+        os.remove(zip_path)
+        print("Downloaded and extracted ChromeDriver.")
+    else:
+        print("Failed to download ChromeDriver.")
+
+def ensure_chromedriver():
+    """ Ensure that ChromeDriver matches Chrome version. """
+    chrome_version = get_chrome_version()
+    chromedriver_version = get_chromedriver_version()
+
+    if not chrome_version:
+        print("Chrome is not installed or not found.")
+        return
+
+    print(f"Chrome Version: {chrome_version}")
+
+    if not chromedriver_version or chrome_version.rsplit('.', 1)[0] != chromedriver_version.rsplit('.', 1)[0]:
+        print("Updating ChromeDriver...")
+        download_url = get_latest_chromedriver_url(chrome_version)
+        if download_url:
+            download_chromedriver(download_url)
+        else:
+            print("Could not find a compatible ChromeDriver version.")
+    else:
+        print("ChromeDriver is up to date.")
+
+# Run the check
+ensure_chromedriver()
