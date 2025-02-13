@@ -6,17 +6,17 @@ import zipfile
 import os
 import winreg
 
-GOOGLE_API_URL = "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+GOOGLE_API_URL = "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
 
 def get_chrome_version():
-    """ Get Chrome version from the registry (Windows) or subprocess (Linux/macOS). """
+    """ Get full Chrome version from the registry (Windows) or subprocess (Linux/macOS). """
     system_os = platform.system()
     try:
         if system_os == "Windows":
             reg_path = r"SOFTWARE\Google\Chrome\BLBeacon"
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path) as key:
                 version, _ = winreg.QueryValueEx(key, "version")
-                return ".".join(version.split(".")[:3])  # Keep major.minor.patch
+                return version  # Return full version
         elif system_os == "Linux":
             output = subprocess.check_output(["google-chrome", "--version"]).decode()
         elif system_os == "Darwin":  # macOS
@@ -27,31 +27,22 @@ def get_chrome_version():
             print("Unsupported OS.")
             return None
         
-        version = re.search(r"(\d+\.\d+\.\d+)", output)  # Extract major.minor.patch
+        version = re.search(r"(\d+\.\d+\.\d+\.\d+)", output)  # Extract full version
         return version.group(1) if version else None
 
     except Exception as e:
         print(f"Error fetching Chrome version: {e}")
         return None
 
-def get_chromedriver_version():
-    """ Get installed ChromeDriver version. """
-    try:
-        output = subprocess.check_output(["chromedriver", "--version"]).decode()
-        version = re.search(r"(\d+\.\d+\.\d+)", output)  # Match major.minor.patch
-        return version.group(1) if version else None
-    except Exception:
-        return None
-
-def get_latest_chromedriver_version(chrome_version):
-    """ Fetch the latest compatible ChromeDriver version using Google's API. """
+def get_latest_chromedriver_url(chrome_version):
+    """ Fetch the exact ChromeDriver version for the installed Chrome version using Google's API. """
     response = requests.get(GOOGLE_API_URL)
     if response.status_code == 200:
         data = response.json()
         for version_data in data["versions"]:
-            if version_data["version"].startswith(chrome_version):
+            if version_data["version"] == chrome_version:
                 return version_data["downloads"]["chromedriver"][0]["url"]
-    print(f"No matching ChromeDriver found for Chrome {chrome_version}.")
+    print(f"No exact match found for Chrome version {chrome_version}.")
     return None
 
 def download_chromedriver(download_url):
@@ -74,25 +65,21 @@ def download_chromedriver(download_url):
         print("Failed to download ChromeDriver.")
 
 def ensure_chromedriver():
-    """ Ensure ChromeDriver matches Chrome version. """
+    """ Ensure ChromeDriver matches the full Chrome version. """
     chrome_version = get_chrome_version()
-    chromedriver_version = get_chromedriver_version()
 
     if not chrome_version:
         print("Chrome is not installed or not found.")
         return
 
-    print(f"Chrome Version: {chrome_version}")
+    print(f"Installed Chrome Version: {chrome_version}")
 
-    if not chromedriver_version or chrome_version != chromedriver_version:
-        print("Updating ChromeDriver...")
-        latest_version_url = get_latest_chromedriver_version(chrome_version)
-        if latest_version_url:
-            download_chromedriver(latest_version_url)
-        else:
-            print("Could not find a matching ChromeDriver version.")
+    latest_version_url = get_latest_chromedriver_url(chrome_version)
+    if latest_version_url:
+        print("Downloading the exact ChromeDriver version...")
+        download_chromedriver(latest_version_url)
     else:
-        print("ChromeDriver is up to date.")
+        print("Could not find a matching ChromeDriver version.")
 
 # Run the check
 ensure_chromedriver()
